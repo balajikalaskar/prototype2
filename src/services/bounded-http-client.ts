@@ -1,4 +1,4 @@
-import { Transform } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 // Load the HTTP transport during startup instead of on the first crawl's latency path.
 import 'got-scraping';
 import {
@@ -20,11 +20,31 @@ export class BoundedHttpClient extends GotScrapingHttpClient {
       source.destroy();
       throw error;
     };
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      rejectResponse(new CrawlError('UPSTREAM_HTTP_ERROR', `Destination returned HTTP ${response.statusCode}.`));
+    const inspectFailure = [403, 429, 503].includes(response.statusCode);
+    if ((response.statusCode < 200 || response.statusCode >= 300) && !inspectFailure) {
+      rejectResponse(new CrawlError('UPSTREAM_HTTP_ERROR', `Destination returned HTTP ${response.statusCode}.`, undefined,
+        { upstreamStatus: response.statusCode }));
     }
     const contentType = String(response.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase();
-    if (contentType !== 'text/html' && contentType !== 'application/xhtml+xml') {
+    if (inspectFailure) {
+      if (!['text/html', 'application/xhtml+xml', 'text/plain', 'application/json'].includes(contentType ?? '')) {
+        rejectResponse(new CrawlError(response.statusCode === 429 ? 'RATE_LIMITED' : 'BOT_BLOCKED',
+          `Destination returned HTTP ${response.statusCode}.`, undefined, { upstreamStatus: response.statusCode }));
+      }
+      // Error pages are diagnostics, not documents: retain only a small decoded prefix.
+      const limit = Math.min(8192, this.maxBytes);
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      for await (const chunk of source) {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
+        chunks.push(buffer.subarray(0, limit - bytes));
+        bytes += Math.min(buffer.length, limit - bytes);
+        if (bytes >= limit) break;
+      }
+      source.destroy();
+      return { ...response, stream: Readable.from(chunks) };
+    }
+    if (!inspectFailure && contentType !== 'text/html' && contentType !== 'application/xhtml+xml') {
       rejectResponse(new CrawlError('UNSUPPORTED_CONTENT', 'Destination must return HTML or XHTML.'));
     }
     if (Number(response.headers['content-length']) > this.maxBytes) {

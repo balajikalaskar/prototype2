@@ -26,5 +26,10 @@ export interface CrawlResult extends Omit<PageContent, 'textTruncated' | 'linksT
     textTruncated: boolean;
     linksTruncated: boolean;
     headingsTruncated: boolean;
+    strategy: 'http' | 'tls' | 'browser';
+    rendered: boolean;
+    attemptCount: number;
+    retrievalDurationMs: number;
+    extractionDurationMs: number;
   };
 }

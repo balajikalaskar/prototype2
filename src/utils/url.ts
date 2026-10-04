@@ -25,8 +25,27 @@ export async function secureDestination(
   options: Pick<NormalizedOptions, 'url' | 'dnsCache' | 'dnsLookup'>,
   signal: AbortSignal,
 ): Promise<void> {
-  signal.throwIfAborted();
   const url = parseHttpUrl(String(options.url));
+  const hostname = url.hostname.replace(/^\[|\]$/g, '');
+  const addresses = await resolvePublicDestination(url.href, signal);
+  const pinnedLookup: LookupFunction = (requestedHost, lookupOptions, callback) => {
+    if (requestedHost.replace(/^\[|\]$/g, '').toLowerCase() !== hostname.toLowerCase()) {
+      callback(new CrawlError('DISALLOWED_DESTINATION', 'Unexpected destination lookup.'), '');
+      return;
+    }
+    const matching = addresses.filter(({ family }) => !lookupOptions.family || family === lookupOptions.family);
+    const first = matching[0];
+    if (!first) { callback(new Error('No address for the requested IP family.'), ''); return; }
+    if (lookupOptions.all) callback(null, matching);
+    else callback(null, first.address, first.family);
+  };
+  options.dnsCache = undefined;
+  options.dnsLookup = pinnedLookup;
+}
+
+export async function resolvePublicDestination(value: string, signal: AbortSignal): Promise<LookupAddress[]> {
+  signal.throwIfAborted();
+  const url = parseHttpUrl(value);
   const hostname = url.hostname.replace(/^\[|\]$/g, '');
   if (hostname.toLowerCase().replace(/\.$/, '') === 'localhost') {
     throw new CrawlError('DISALLOWED_DESTINATION', 'Local and non-public destinations are not allowed.');
@@ -45,19 +64,7 @@ export async function secureDestination(
   if (!addresses.length || addresses.some(({ address }) => !isPublicAddress(address))) {
     throw new CrawlError('DISALLOWED_DESTINATION', 'Local and non-public destinations are not allowed.');
   }
-  const pinnedLookup: LookupFunction = (requestedHost, lookupOptions, callback) => {
-    if (requestedHost.replace(/^\[|\]$/g, '').toLowerCase() !== hostname.toLowerCase()) {
-      callback(new CrawlError('DISALLOWED_DESTINATION', 'Unexpected destination lookup.'), '');
-      return;
-    }
-    const matching = addresses.filter(({ family }) => !lookupOptions.family || family === lookupOptions.family);
-    const first = matching[0];
-    if (!first) { callback(new Error('No address for the requested IP family.'), ''); return; }
-    if (lookupOptions.all) callback(null, matching);
-    else callback(null, first.address, first.family);
-  };
-  options.dnsCache = undefined;
-  options.dnsLookup = pinnedLookup;
+  return addresses;
 }
 
 export function resolveLink(href: string, baseUrl: string): string | null {

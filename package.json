@@ -12,7 +12,9 @@
     "build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json",
     "start": "node dist/app/server.js",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
-    "test": "node node_modules/vitest/vitest.mjs run"
+    "test": "node node_modules/vitest/vitest.mjs run",
+    "browser:install": "node node_modules/patchright/cli.js install chromium",
+    "browser:install-deps": "node node_modules/patchright/cli.js install-deps chromium"
   },
   "dependencies": {
     "@crawlee/cheerio": "^3.18.2",
@@ -24,8 +26,11 @@
     "dotenv": "^18.0.5",
     "express": "^5.2.1",
     "got-scraping": "^4.2.1",
+    "impit": "^0.14.5",
     "ipaddr.js": "^2.5.0",
+    "patchright": "^1.63.0",
     "pino": "^10.4.0",
+    "tough-cookie": "^6.0.2",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -34,5 +39,10 @@
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
+  },
+  "optionalDependencies": {
+    "impit-linux-x64-gnu": "0.14.5",
+    "impit-win32-arm64-msvc": "0.14.5",
+    "impit-win32-x64-msvc": "0.14.5"
   }
 }
